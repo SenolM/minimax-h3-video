@@ -90,6 +90,7 @@ textarea.sm{min-height:60px}
 <label for="fixed">Sabit kurallar (her prompt’a eklenir)</label>
 <textarea id="fixed" class="sm">Adult subjects only. Clean natural skin, no tattoos anywhere. No on-screen text unless requested.</textarea>
 <button class="go" id="go">Prompt üret</button>
+<button class="go" id="stop" style="display:none;margin-top:10px;background:#b3382c;color:#fff">⏹ Durdur (Esc)</button>
 <div class="msg" id="msg"></div>
 <div id="out"></div>
 </section>
@@ -125,7 +126,7 @@ var PROV=[
  {n:"Groq (ücretsiz)",k:"groq",m:"llama-3.3-70b-versatile",h:"Ücretsiz anahtar: console.groq.com/keys adresinden al."},
  {n:"LM Studio (yerel)",k:"lmstudio",m:"local-model",h:"LM Studio’da Developer sekmesinden sunucuyu başlat, CORS’u aç. Model adını sunucu ekranındaki model kimliğinden kopyala. Anahtar gerekmez."},
  {n:"Claude API (ücretli)",k:"anthropic",m:"claude-sonnet-5-5",h:"Anahtar: console.anthropic.com. Kullanım ücretlidir."},
- {n:"OpenRouter",k:"openrouter",m:"google/gemini-2.5-flash",h:"Anahtar: openrouter.ai/keys. Model alanına openrouter.ai/models sayfasındaki model kimliğini aynen yaz (örn. google/gemini-2.5-flash). Görselden doldurma kullanacaksan görsel destekleyen bir model seç."}
+ {n:"OpenRouter",k:"openrouter",m:"openrouter/free",h:"Anahtar: openrouter.ai/keys. Varsayılan openrouter/free (Free Models Router) ücretsiz modeller arasından kendisi seçer. Belirli bir model istersen openrouter.ai/models sayfasındaki kimliği aynen yaz (ücretsiz sürümler :free ile biter)."}
 ];
 var CK="pu_cfg_v1",HK="vp_hist_v1";
 function jget(k,d){try{var v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}}
@@ -296,7 +297,15 @@ function needKey(){return !(cfg.keys[PROV[cfg.p].k])&&PROV[cfg.p].k!=="lmstudio"
 if(needKey())$("msg").textContent=NOKEY;
 
 function msgc(p,img){return img?[{type:"image_url",image_url:{url:"data:"+img.m+";base64,"+img.d}},{type:"text",text:p}]:p}
+var ctls=[],busyN=0;
+function stopVis(){var b=$("stop");if(b)b.style.display=busyN>0?"":"none"}
+function stopAll(){ctls.slice().forEach(function(c){c.abort()})}
 async function llm(prompt,img){
+  var ctl=new AbortController();ctls.push(ctl);busyN++;stopVis();
+  try{return await llm0(prompt,img,ctl.signal)}
+  finally{busyN--;ctls.splice(ctls.indexOf(ctl),1);stopVis()}
+}
+async function llm0(prompt,img,signal){
   var p=PROV[cfg.p],key=cfg.keys[p.k],model=cfg.models[p.k]||p.m;
   if(!key&&p.k!=="lmstudio")throw new Error(NOKEY);
   var url,opt;
@@ -317,10 +326,13 @@ async function llm(prompt,img){
     opt={method:"POST",headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:model,max_tokens:6000,messages:[{role:"user",content:img?[{type:"image",source:{type:"base64",media_type:img.m,data:img.d}},{type:"text",text:prompt}]:prompt}]})};
   }
   var r,j=null;
+  opt.signal=signal;
   try{r=await fetch(url,opt)}catch(e){
+    if(signal.aborted||e.name==="AbortError")throw new Error("Durduruldu.");
     throw new Error(p.k==="lmstudio"?"Sunucuya ulaşılamadı. LM Studio sunucusu açık mı, CORS açık mı, adres doğru mu?":"Bağlantı hatası: "+e.message);
   }
   try{j=await r.json()}catch(e){}
+  if(signal.aborted)throw new Error("Durduruldu.");
   if(!r.ok){
     var m=j&&(j.error&&(j.error.message||j.error)||j.message)||"";
     throw new Error("HTTP "+r.status+(m?": "+(typeof m==="string"?m:JSON.stringify(m)):""));
@@ -401,7 +413,7 @@ function card(item,inHist){
       item.text=t;pre.textContent=t;
       for(var i=0;i<hist.length;i++){if(hist[i].id===item.id)hist[i].text=t}
       saveH();inp.value="";ms.textContent="Güncellendi.";showL();
-    }catch(e){ms.textContent="Hata: "+e.message}
+    }catch(e){ms.textContent=(/^Durduruldu/.test(e.message)?"":"Hata: ")+e.message}
     ap.disabled=fx.disabled=false;
   }
   ap.onclick=function(){apply()};
@@ -416,7 +428,7 @@ function card(item,inHist){
       $("f1").value=t.trim();$("idea").value="";tab(1);
       $("msg").textContent="Önceki sahnenin son karesi, yeni sahnenin ilk karesi (I2VA) olarak dolduruldu. Yeni sahne fikrini yaz.";
       $("idea").focus();window.scrollTo(0,0);
-    }catch(e){ms.textContent="Hata: "+e.message;box.className="edit open"}
+    }catch(e){ms.textContent=(/^Durduruldu/.test(e.message)?"":"Hata: ")+e.message;box.className="edit open"}
     nx.disabled=false;nx.textContent="Sonraki sahne";
   };
   return d;
@@ -560,7 +572,7 @@ async function goQueue(){
     items.forEach(function(it){out.appendChild(card(it,false))});
     msg.textContent=bad?"Hazır, ama kare sayısı klip sayısıyla uyuşmuyor. Gerekirse yeniden üret.":"Hazır ve geçmişe kaydedildi.";
   }catch(e){
-    msg.textContent="Hata: "+e.message;
+    msg.textContent=(/^Durduruldu/.test(e.message)?"":"Hata: ")+e.message;
   }
   clearInterval(tm);go.disabled=false;
 }
@@ -605,10 +617,12 @@ go.onclick=async function(){
     items.forEach(function(it){out.appendChild(card(it,false))});
     msg.textContent="Hazır ve geçmişe kaydedildi.";
   }catch(e){
-    msg.textContent="Hata: "+e.message;
+    msg.textContent=(/^Durduruldu/.test(e.message)?"":"Hata: ")+e.message;
   }
   clearInterval(tm);go.disabled=false;
 };
+$("stop").onclick=stopAll;
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&busyN>0)stopAll()});
 })();
 </script>
 </body>
