@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<title>Video Prompt Üretici</title>
+<title>Prompt Üretici</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="VideoPrompt">
@@ -45,7 +45,7 @@ textarea.sm{min-height:60px}
 </head>
 <body>
 <main>
-<h1>Video Prompt Üretici<small>MiniMax H3</small></h1>
+<h1>Prompt Üretici<small>görsel · video · kuyruk</small></h1>
 <div class="tabs"><button class="tab on" id="t1">Üret</button><button class="tab" id="t2">Geçmiş (0)</button><button class="tab" id="t3">Ayarlar</button></div>
 
 <section id="v1">
@@ -82,10 +82,18 @@ textarea.sm{min-height:60px}
 <div class="lb">Referans rolü (Krea 2 “Inject Reference Images”)</div><div class="row" id="qrf"></div>
 <div class="lb">Kare oranı</div><div class="row" id="qar"></div>
 </div>
+<div id="iw">
+<div class="lb">Referans görsel (opsiyonel)</div>
+<div class="row"><button class="btn" id="pick" type="button">Görsel seç</button></div>
+<input type="file" id="file" accept="image/*" class="hid">
+<div id="refbox" style="display:none"><img id="thumb" alt="" style="max-width:100%;max-height:200px;border-radius:12px;margin-top:10px;display:block"><div class="row" style="margin-top:8px"><button class="btn" id="rm" type="button">Kaldır</button></div><div class="lb">Referans nasıl kullanılsın?</div><div class="row" id="refmodes"></div></div>
+<div class="lb">Hedef model</div><div class="row" id="models"></div>
+<div class="lb">En-boy oranı</div><div class="row" id="ars"></div>
+</div>
 <div class="lb">Stil</div><div class="row" id="styles"></div>
-<div class="lb">Kamera eğilimi</div><div class="row" id="cams"></div>
-<div class="lb">Diyalog</div><div class="row" id="dlg"></div>
-<div class="lb">Müzik</div><div class="row" id="mus"></div>
+<div class="lb" id="caml">Kamera eğilimi</div><div class="row" id="cams"></div>
+<div class="lb" id="dlgl">Diyalog</div><div class="row" id="dlg"></div>
+<div class="lb" id="musl">Müzik</div><div class="row" id="mus"></div>
 <div class="lb">Varyasyon sayısı</div><div class="row" id="counts"></div>
 <label for="fixed">Sabit kurallar (her prompt’a eklenir)</label>
 <textarea id="fixed" class="sm">Adult subjects only. Clean natural skin, no tattoos anywhere. No on-screen text unless requested.</textarea>
@@ -96,6 +104,7 @@ textarea.sm{min-height:60px}
 </section>
 
 <section id="v2" class="hid">
+<div class="row" id="hf" style="margin-top:8px"></div>
 <div class="row" style="margin-top:8px"><button class="btn" id="clr">Geçmişi temizle</button></div>
 <div id="hl"></div>
 </section>
@@ -111,6 +120,13 @@ textarea.sm{min-height:60px}
 <button class="go" id="sv">Kaydet</button>
 <div class="msg" id="sm"></div>
 <div class="msg" id="help"></div>
+<div class="lb" style="margin-top:24px">Kendi stillerim</div>
+<input type="text" id="csn" placeholder="Stil adı">
+<textarea id="cst" class="sm" placeholder="İngilizce stil tarifi: ışık, renk, doku, ruh hali" style="margin-top:8px"></textarea>
+<div class="row" id="cstype" style="margin-top:8px"></div>
+<div class="row" style="margin-top:8px"><button class="btn" id="csadd">Stili kaydet</button></div>
+<div class="msg" id="csm"></div>
+<div class="row" id="cslist"></div>
 <div class="msg">Anahtar yalnızca bu cihazın tarayıcısında saklanır, sadece seçtiğin sağlayıcıya gönderilir. Görsel prompt aracıyla aynı ayarları paylaşır.</div>
 </section>
 </main>
@@ -133,11 +149,16 @@ function jget(k,d){try{var v=JSON.parse(localStorage.getItem(k));return v==null?
 function jset(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 var cfg=jget(CK,{p:0,keys:{},models:{}});cfg.keys=cfg.keys||{};cfg.models=cfg.models||{};
 var hist=jget(HK,[]);if(!Array.isArray(hist))hist=[];
+if(!jget("vp_imported_pu",0)){
+  var oldH=jget("pu_hist_v1",[]);
+  if(Array.isArray(oldH)&&oldH.length){oldH.forEach(function(o){if(o.mo==null)o.mo=3;hist.push(o)});hist.sort(function(a,b){return parseInt(b.id)-parseInt(a.id)});jset(HK,hist.slice(0,100))}
+  jset("vp_imported_pu",1);
+}
 
-var MODES=["Base","Referans","Kuyruk"];
+var MODES=["Video: Base","Video: Referans","Kuyruk","Görsel"];
 var KINDS=[["T2VA","T2VA · metinden"],["I2VA","I2VA · ilk kare"],["FL2VA","FL2VA · ilk + son kare"],["L2VA","L2VA · son kare"]];
 var DURS=[4,5,6,8,10,15],SHOTS=["Oto",1,2,3,4],COUNTS=[1,2,3];
-var CAMS=[["Oto",""],["Push In","Push In"],["Pull Out","Pull Out"],["Pan","Pan Left or Right"],["Tracking","Tracking Shot"],["Arc","Arc Shot"],["Static","Static Shot"],["El kamerası","Shake Slightly (handheld feel)"],["POV","POV"]];
+var CAMS=[["Oto",""],["Sabit · gerilim","Static Shot"],["Pan · yandan açılım","Pan"],["Whip Pan · ani geçiş","Pan at large amplitude and fast speed (whip pan)"],["Tilt · dikey açılım","Tilt"],["Roll · dengesizlik","Roll with small amplitude at slow speed"],["Push In · yakınlık","Push In"],["Pull Out · yalnızlık","Pull Out"],["Optik zoom · gözlem","Zoom In (optical zoom, the camera position stays fixed)"],["Crash zoom · vurgu","Zoom In at fast speed (crash zoom)"],["Dolly zoom · baş dönmesi","Pull Out combined with Zoom In so the subject keeps the same size while the background stretches (dolly zoom)"],["Takip · sürükleme","Tracking Shot following the subject"],["Truck · paralaks","Truck"],["Arc / Orbit · kahramanlık","Arc Shot"],["Boom / Crane · ihtişam","Pedestal up (crane rise)"],["El kamerası · gerçekçilik","Shake Slightly (handheld feel)"],["POV","POV"]];
 var DLG=[["Yok",""],["English","English"],["Türkçe","Turkish"]];
 var MUS=["Müzik var","Müziksiz (N/A)"];
 var RULES={
@@ -183,7 +204,7 @@ function chips(id,items,key,label,after){
   });
 }
 function upd(){
-  var r=st.mo===1,q=st.mo===2,k=KINDS[st.k][0];
+  var r=st.mo===1,q=st.mo===2,im=st.mo===3,k=KINDS[st.k][0];
   sh("kl",!r&&!q);sh("kinds",!r&&!q);sh("fr",!r&&!q&&k!=="T2VA");sh("rfw",r);
   $("f1l").textContent=k==="L2VA"?"Son kare (Picture 1) açıklaması":k==="FL2VA"?"İlk kare (Picture 1) açıklaması":"İlk kare (Picture 1) açıklaması";
   var b2=!r&&!q&&k==="FL2VA";sh("f2",b2);sh("f2l",b2);sh("im2",b2);
@@ -191,6 +212,10 @@ function upd(){
   $("shl").textContent=q?"Klip sayısı (plan boşsa)":"Shot sayısı";
   $("idl").textContent=q?"Ortak tanım: özne, mekan, ruh hali (her klibe uygulanır)":"Fikir (tek cümle yeterli, Türkçe olabilir)";
   $("spl").textContent=q?"Klip planı (her satır bir klip; başa süre yazabilirsin: “6 sn: …”)":"Shot planı (isteğe bağlı, her satır bir shot)";
+  sh("iw",im);
+  if(im){["kl","kinds","fr","rfw","dul","durs","shl","shots","spl","sp","caml","cams","dlgl","dlg","musl","mus","qw","im3"].forEach(function(x){$(x).style.display="none"})}
+  else{["shl","shots","spl","sp","caml","cams","dlgl","dlg","musl","mus"].forEach(function(x){$(x).style.display=""})}
+  buildStyles();
   $("sp").placeholder=q?"örn. 4 sn: yüksek açı, kadın koltukta kameraya bakar\n7 sn: yan plan, başını çevirir, gülümser\nsüre yazmazsan serbest kalır":"örn. geniş plan, kadın peronda bekler\nyakın plan, mektubu katlar, “Bir sonraki durakta iniyorum.”";
 }
 chips("modes",MODES,"mo",function(x){return x},upd);
@@ -258,6 +283,110 @@ var SYSQ="You write prompts for a video-generation queue. Every paragraph you ou
 "Output format: plain English, no markdown, no field names, no labels such as 'Clip 1' or 'Shot 1', no timestamps, no line breaks inside a paragraph, exactly one blank line between paragraphs. Nothing else.\n"+
 "Each paragraph is one flowing block in this order: subject identity and clothing; setting; shot type and framing; the action in time order, sized to the clip's duration (a short clip gets one simple action, a longer clip may get two or three beats); camera motion written as type + amplitude + speed, e.g. 'The camera pushes in with small amplitude at slow speed' (types: Zoom In/Out, Push In/Pull Out, Pan, Truck, Tilt, Pedestal, Arc Shot, Tracking Shot, Static Shot, Shake Slightly, POV; omit medium and normal amplitude or speed); lighting and visual style; sound (ambience and physical action sounds). Every detail must be visible or audible. Subjects must be adults. Keep content tasteful.";
 var QKEEP="\n\nKeep the format: separate self-contained plain paragraphs, one blank line between paragraphs, no line breaks inside a paragraph, no field names or labels, the same number of clips, and each clip's duration unless the instruction changes it. Change only what the instruction implies. Output ONLY the revised prompt, no preface.";
+var STYI0=[["Yok",""],
+["Barbiecore","Barbiecore and retro Palm Springs: bubblegum pink, hot magenta, glossy plastic textures, sunny playful mood."],
+["Film noir","Film noir: black and white, hard chiaroscuro lighting, venetian blind shadows, smoky haze, 1940s mood."],
+["Sinematik","Cinematic: anamorphic lens, shallow depth of field, teal and orange grade, fine film grain, dramatic composition."],
+["Altın saat","Golden hour: low warm sun, long shadows, soft lens flare, glowing rim light."],
+["80’ler neon","1980s synthwave: neon magenta and cyan, chrome, grid horizon, VHS grain."],
+["Analog film","Analog 35mm film look: Kodak Portra tones, soft grain, light leaks, slight vignette."],
+["Minimal stüdyo","Minimal studio: seamless pastel backdrop, soft diffused softbox light, clean editorial composition."],
+["Vogue editoryal","High-fashion Vogue-style editorial: crisp hard studio lighting, polished glossy finish, bold confident pose, luxurious styling, magazine-cover composition."],
+["Polaroid","Vintage Polaroid snapshot: faded warm colors, direct on-camera flash, soft focus edges, white border feel, 1970s candid mood."],
+["Wes Anderson","Wes Anderson-inspired look: perfectly symmetrical centered framing, flat staging, pastel palette of pink, mint and mustard, whimsical retro set design."],
+["Noir neon","Neon-noir sci-fi city: rain-soaked streets, neon reflections on wet surfaces, drifting fog, deep shadows, cyan and magenta glow, Blade Runner mood."],
+["Dokümanter sokak","Documentary street photography: available natural light, spontaneous candid moment, slight motion, fine grain, authentic unposed feel."],
+["90’lar nostalji","1990s nostalgia: disposable camera look, harsh flash, slightly blurry and oversaturated, casual snapshot, period fashion."],
+["Y2K","Y2K aesthetic: glossy metallic silver and baby pink, chrome and glass effects, glitter, holographic highlights, early-2000s pop style."],
+["Cottagecore","Cottagecore: soft natural window or meadow light, wildflowers, linen and lace, handmade textures, gentle pastoral mood."],
+["Dark academia","Dark academia: candlelit library, aged books, wood paneling, tweed and wool textures, deep brown, burgundy and forest green tones."],
+["Boho / Ibiza","Boho Ibiza sunset: warm earthy terracotta and sand tones, flowing natural fabrics, rattan and macrame, golden sunset glow."],
+["Yağlıboya portre","Classical oil painting portrait: visible brushstrokes, Rembrandt lighting, rich pigments, canvas texture, museum-quality chiaroscuro."],
+["Suluboya","Watercolor illustration: fluid translucent washes, soft bleeding edges, visible paper texture, delicate light palette."],
+["Anime / Ghibli","Studio Ghibli-inspired anime: hand-painted soft backgrounds, warm gentle light, lush nature, whimsical and nostalgic mood."],
+["Makoto Shinkai","Makoto Shinkai-inspired anime: luminous detailed skies with dramatic clouds, sparkling light rays and lens glow, richly saturated blue and orange gradients, delicate backgrounds, emotional cinematic atmosphere."],
+["3D Pixar","3D animated film look in the style of modern Pixar movies: rounded appealing shapes, soft global illumination, vibrant colors, expressive characters."],
+["Comic / pop art","Comic book pop art: bold black outlines, halftone dots, flat vivid primary colors, dynamic composition, graphic punch."],
+["Mavi saat","Blue hour twilight: deep cool blue sky, warm artificial lights glowing in contrast, calm and moody atmosphere."],
+["Gotik fantastik","Dark gothic fantasy: heavy mist, dim moody light, dramatic shadows, ornate architecture, muted desaturated palette with deep crimson accents."],
+["Pastel rüya","Pastel dreamcore: hazy soft glow, bloom around highlights, pastel pink, lavender and sky blue, ethereal floating dreamlike mood."],
+["Lüks ürün","Luxury product photography: dark glossy surface, sharp rim lighting, specular highlights, reflections, premium minimal composition."]];
+var NR=["Yağlıboya portre","Suluboya","Anime / Ghibli","Makoto Shinkai","3D Pixar","Comic / pop art"];
+var SYS="You write rich, detailed image-generation prompts in English (photorealistic by default). Expand the user’s short idea into a complete prompt using EXACTLY this section order, written as flowing prose paragraphs (no headings, no markdown):\n"+
+"1 Format and shot (orientation, medium or look, camera angle or composition, lens)\n2 Subject (hair, eyes, freckles, expression, gaze)\n3 Skin and hard constraints\n4 Accessories and jewelry\n5 Clothing, with fabric and color details\n6 Pose and action, including any foreground object and depth of field\n7 Setting and props, with left/right/foreground/background placement\n8 Lighting (direction, warmth, shadows, highlights)\n9 Color palette as a list of named colors\n10 Style (editorial look, lens, film grade, aesthetic, ultra-detailed, 8k) and aspect ratio.\n"+
+"Quality bar: be concrete and sensory, name materials, colors and positions, keep a consistent mood, and invent tasteful details only for what the user left open. Every explicit detail the user gives (clothing, legwear, footwear, pose, framing, aspect ratio) is mandatory: include it exactly as stated and never replace, soften or omit it. Subjects must be adults. Keep content tasteful.";
+var REFMODES=[["Benzer yap","Use the reference as the main basis: keep its subject type, composition, palette and lighting, and apply the user’s idea as the changes."],
+["Sadece stil","Take only the style, palette, lighting and mood from the reference; the subject and scene come from the user’s idea."],
+["Sadece poz / kompozisyon","Take only the pose, framing and composition from the reference; everything else comes from the user’s idea and the chosen style."]];
+var IMODELS=[["Midjourney","Midjourney: end with parameters like --ar and --v 7. One flowing descriptive prompt, no markdown."],
+["Flux","Flux: one rich natural-language paragraph, no parameters, no tags, no --flags."],
+["Krea 2","Krea 2: one flowing natural-language paragraph following the Krea 2 order; no --flags; mention the aspect ratio in words.",1],
+["Genel","Generic: structured sections separated by blank lines, plus the aspect ratio at the end."]];
+var IARS=["3:2","2:3","16:9","9:16","1:1"];
+var SYSK="You write prompts for the Krea 2 image model. Write one flowing English paragraph per prompt, no markdown, no labels, no line breaks inside a prompt.\n\n"+
+"STRUCTURE (move logically through the image):\n"+
+"[Main Subject + Pose/Action] → [Appearance, Clothing & Details with specific fabrics (denim, silk, leather, knit, cotton, linen) and fit (baggy, tailored, oversized, flared)] → [Props & Materials with precise surface qualities (quilted leather, brushed metal, crumpled paper, weathered wood, glossy ceramic, crinkled fabric)] → [Composition, Framing & Perspective: shot type (full-body, medium close-up, extreme close-up, wide shot), camera angle, Vantage Height (Knee Level, Eye-Level, High Angle, Low Angle, Bird's Eye View, Worm's Eye View, Shoulder Level), depth of field, focus, negative space, leading lines, balance, spatial relationships] → [Environment & Background with textures and spatial depth] → [Lighting, Color Palette & Mood: direction, warmth, shadows, highlights, named colors, contrast, emotional tone] → [Overall Aesthetic & Medium: photorealistic photography, digital painting, stylized illustration, cinematic still, editorial fashion, etc.]\n\n"+
+"RULES:\n"+
+"- Text in Image: If any legible text, signage, labels, typography, or writing appears, transcribe it accurately and enclose it in double quotation marks.\n"+
+"- Name each element once in a single sentence; never repeat a descriptor of the same object across sentences.\n"+
+"- Write 'a single ...' for objects that must appear exactly once.\n"+
+"- Distance must be explicit: 'wide shot' alone is not enough.\n"+
+"- A straight rear view hides front elements; use a slight three-quarter angle when something in front must stay visible.\n"+
+"- Every explicit detail the user gives (clothing, pose, framing, aspect ratio, objects) is mandatory and must appear exactly as stated.\n"+
+"- Subjects must be adults. Keep content tasteful.";
+var NEWSTY=[
+["Neo-noir cyberpunk","neo-noir cyberpunk megacity: towering skyscrapers and giant holographic billboards, constant rain, dense fog, wet reflective streets, neon magenta and cyan glow cutting through dark haze, flying police vehicles crossing the skyline, hard chiaroscuro light, gritty cinematic sci-fi mood.","R"],
+["Sci-fi megakent (Alita)","sci-fi megacity: vast layered city with floating districts, hover vehicles and flying cars weaving between megastructures, colossal cargo ships and spacecraft drifting in the sky, vibrant saturated colors, crisp high-detail lighting, grand scale, lived-in industrial futurism.","R"],
+["Dieselpunk","dieselpunk world: riveted steel and brass machinery, giant mechs and androids, smoke and steam, rust and oil-stained metal, amber industrial lighting with glowing neon accents, gritty survivalist mood.","R"],
+["Uzay / kargo gemileri","space-opera industrial sci-fi: colossal worn cargo ships and orbital docks, weathered hull panels, lived-in used-future detail, hard sunlight against deep black space, vast scale.","R"],
+["Yaz editoryal (doğal ışık)","high-fashion summer editorial in harsh natural sunlight: dappled leaf shadows, warm saturated colors, glossy polished finish, bold confident pose.","R"]];
+var CSK="vp_cstyles_v1",cstyles=jget(CSK,[]);if(!Array.isArray(cstyles))cstyles=[];
+var STYV0=STY.slice(),STYIL=[];
+var STYI0b=STYI0.map(function(x){return[x[0],x[1],NR.indexOf(x[0])>=0?"A":"R"]});
+function styleLists(){
+  STY=STYV0.slice();STYIL=STYI0b.slice();
+  NEWSTY.concat(cstyles.map(function(c){return[c.n,c.t,c.f]})).forEach(function(x){
+    STY.push([x[0],(x[2]==="R"?"Live-action ":"")+x[1],x[2]]);
+    STYIL.push([x[0],x[1].charAt(0).toUpperCase()+x[1].slice(1),x[2]]);
+  });
+}
+function buildStyles(){var im=st.mo===3;chips("styles",im?STYIL:STY,im?"si":"sy",function(x){return x[0]})}
+st.si=0;st.m=0;st.a=0;st.r=0;st.hf=0;st.cf=0;
+styleLists();
+var refImg=null,refMode=0;
+chips("models",IMODELS,"m",function(x){return x[0]});
+chips("ars",IARS,"a",function(x){return x});
+chips("refmodes",REFMODES,"r",function(x){return x[0]});
+chips("cstype",["Gerçekçi","Stilize (anime, çizim, 3D…)"],"cf",function(x){return x});
+function renderCS(){
+  var l=$("cslist");l.textContent="";
+  if(!cstyles.length){l.appendChild(mk("div","msg","Henüz özel stil yok."));return}
+  cstyles.forEach(function(c,k){var b=mk("button","chip q","🗑 "+c.n);b.onclick=function(){if(confirm(c.n+" silinsin mi?")){cstyles.splice(k,1);jset(CSK,cstyles);styleLists();buildStyles();renderCS()}};l.appendChild(b)});
+}
+$("csadd").onclick=function(){
+  var n=$("csn").value.trim(),t=$("cst").value.trim();
+  if(!n||!t){$("csm").textContent="Ad ve tarif gerekli.";return}
+  cstyles.push({n:n,t:t,f:st.cf===0?"R":"A"});jset(CSK,cstyles);
+  $("csn").value="";$("cst").value="";$("csm").textContent="Kaydedildi.";
+  styleLists();buildStyles();renderCS();
+};
+renderCS();
+$("pick").onclick=function(){$("file").click()};
+$("file").onchange=function(){
+  var f=this.files&&this.files[0],inp=this;if(!f)return;
+  var u=URL.createObjectURL(f),im=new Image();
+  im.onload=function(){
+    var M=1024,w=im.naturalWidth,h=im.naturalHeight,k=Math.min(1,M/Math.max(w,h));
+    var c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);
+    c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+    refImg=c.toDataURL("image/jpeg",0.85);$("thumb").src=refImg;$("refbox").style.display="";URL.revokeObjectURL(u);
+  };
+  im.onerror=function(){$("msg").textContent="Görsel okunamadı. JPG veya PNG dene."};
+  im.src=u;inp.value="";
+};
+$("rm").onclick=function(){refImg=null;$("refbox").style.display="none"};
+var KCOL={1:"#3b82c4",2:"#3aa76d",3:"#d9822b"},KNM={1:"Video",2:"Kuyruk",3:"Görsel"};
+function kindOf(it){return it.mo===2?2:(it.mo===0||it.mo===1)?1:3}
 function nsh(){var c=$("sp").value.split("\n").filter(function(x){return x.trim()}).length;return c||SHOTS[st.sh]}
 function instr(){
   var k=KINDS[st.k][0],S=DURS[st.d].toFixed(2),N=typeof nsh()==="number"?nsh():1;
@@ -267,6 +396,7 @@ function instr(){
   return"How the reference pictures align with the target video — <Picture 1> (from [Shot "+N+"]) aligns with the "+S+"-second mark of the target video.";
 }
 function lint(t,mo,dur){
+  if(mo===3||mo==null)return[];
   if(mo===2){
     var qw=[];
     if(/\[Shot \d|integrated_multimodal|overall_soundscape|non_diegetic|At \d\d:\d\d/.test(t))qw.push("Kuyruk modunda alan adı, [Shot] veya zaman damgası olmamalı");
@@ -276,18 +406,27 @@ function lint(t,mo,dur){
   }
   var w=[],F=mo===1?["subject_definitions","summary","retention_analysis","detailed_description","overall_soundscape","non_diegetic_music"]:["integrated_multimodal_description","overall_soundscape","non_diegetic_music"];
   F.forEach(function(f){if(t.indexOf(f+":")<0)w.push("Eksik alan: "+f)});
-  if(/\[Shot 1\]\s*At \d/.test(t))w.push("Shot 1’de zaman damgası olmamalı");
+  if(/\[Shot 1\]\s*At \d/.test(t))w.push("Shot 1'de zaman damgası olmamalı");
   var re=/\[Shot (\d+)\]\s*At (\d\d):(\d\d\.\d{3})/g,m,prev=0,cnt=0,tot=(t.match(/\[Shot \d+\]/g)||[]).length;
   while((m=re.exec(t))){var s=+m[2]*60+ +m[3];cnt++;if(s<=prev)w.push("Shot "+m[1]+" zamanı artmıyor");if(s>=dur)w.push("Shot "+m[1]+" video süresini aşıyor");prev=s}
-  if(tot>1&&cnt<tot-1)w.push("Bazı shotlarda “At MM:SS.mmm” zamanı yok");
+  if(tot>1&&cnt<tot-1)w.push("Bazı shotlarda \"At MM:SS.mmm\" zamanı yok");
   (t.match(/<d>[\s\S]*?<\/d>/g)||[]).forEach(function(d){if(!/^<d>\[[^\]]+\]/.test(d))w.push("<d> içinde [Dil] etiketi yok")});
-  if(/off-screen voiceover/.test(t)&&!/lips remain completely closed/.test(t))w.push("Voiceover sonrası “lips remain completely closed” eksik");
+  if(/off-screen voiceover/.test(t)&&!/lips remain completely closed/.test(t))w.push("Voiceover sonrası \"lips remain completely closed\" eksik");
+  // YENİ: non_diegetic_music N/A kontrolü
+  var ndm=(t.split("non_diegetic_music:")[1]||"").trim();
+  if(!ndm)w.push("non_diegetic_music boş olmamalı");
   if(mo===1){
     var rt=(t.split("retention_analysis:")[1]||"").split("detailed_description:")[0];
     if(/\(S\d/.test(rt))w.push("retention_analysis içinde (Sx) olmamalı");
     if(!/summary:\s*\[/.test(t))w.push("summary [görev tipi] ile başlamalı");
+    // summary içinde subject_definitions'ta tanımsız etiket kontrolü (düzenleme cümlesi muaf)
+    var sm=(t.split("summary:")[1]||"").split("retention_analysis:")[0];
+    var sdefs=(t.split("subject_definitions:")[1]||"").split("summary:")[0];
+    var sm2=sm.replace(/The target video is an edited version of <Video \d+>\./,"");
+    var newLabels=(sm2.match(/<(Subject|Picture|Video|Audio) \d+>/g)||[]).filter(function(l){return sdefs.indexOf(l)<0});
+    if(newLabels.length>0)w.push("summary içinde tanımsız etiket var: "+newLabels.join(", "));
     var labs=((t.split("subject_definitions:")[1]||"").split("summary:")[0].match(/<(Subject|Picture|Video|Audio) \d+>/g)||[]);
-    labs.filter(function(x,i){return labs.indexOf(x)===i}).forEach(function(l){if(rt.indexOf(l)<0)w.push(l+" retention_analysis’te yok")});
+    labs.filter(function(x,i){return labs.indexOf(x)===i}).forEach(function(l){if(rt.indexOf(l)<0)w.push(l+" retention_analysis'te yok")});
   }
   return w;
 }
@@ -350,11 +489,12 @@ function copy(t,btn){
   function fb(){var a=document.createElement("textarea");a.value=t;a.style.position="fixed";a.style.opacity="0";document.body.appendChild(a);a.focus();a.select();a.setSelectionRange(0,99999);try{document.execCommand("copy");ok()}catch(e){}document.body.removeChild(a)}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,fb)}else fb();
 }
-function saveH(){jset(HK,hist.slice(0,60));$("t2").textContent="Geçmiş ("+hist.length+")"}
+function saveH(){jset(HK,hist.slice(0,100));$("t2").textContent="Geçmiş ("+hist.length+")"}
 
 function card(item,inHist){
   var d=mk("div","card");
-  d.appendChild(mk("b",null,(item.idea?item.idea+" · ":"")+item.model));
+  var kd=kindOf(item);d.style.borderLeft="5px solid "+KCOL[kd];
+  d.appendChild(mk("b",null,KNM[kd]+" · "+(item.idea?item.idea+" · ":"")+item.model));
   var pre=mk("pre",null,item.text);d.appendChild(pre);
   var lt=mk("div","lint");d.appendChild(lt);
   var r=mk("div","row");
@@ -362,7 +502,7 @@ function card(item,inHist){
   var ed=mk("button","btn","Düzenle");
   var fx=mk("button","btn ac","Hataları düzelt");
   var nx=mk("button","btn","Sonraki sahne");
-  r.appendChild(cp);r.appendChild(ed);r.appendChild(fx);if(item.mo!==2)r.appendChild(nx);
+  r.appendChild(cp);r.appendChild(ed);r.appendChild(fx);if(kd===1)r.appendChild(nx);
   if(inHist){var del=mk("button","btn","Sil");del.onclick=function(){hist=hist.filter(function(h){return h.id!==item.id});saveH();renderHist()};r.appendChild(del)}
   d.appendChild(r);
   var qc=mk("div","row");qc.style.marginTop="8px";
@@ -406,8 +546,8 @@ function card(item,inHist){
   async function apply(cmd){
     cmd=(cmd||inp.value).trim();if(!cmd)return;
     ap.disabled=fx.disabled=true;ms.textContent="Düzenleniyor…";
-    var p="Here is a MiniMax H3 video prompt ("+item.model+"):\n\n"+item.text+"\n\nRewrite it applying this instruction (the user may write in Turkish): "+cmd+
-      (item.mo===2?QKEEP:"\n\nKeep the exact format: the first alignment line if present, all field names, [Shot N] and 'At MM:SS.mmm' timing, (Sx) IDs, <d>[Language] ...</d> tags, reference labels. Keep the video duration of "+item.dur+" seconds. Change only what the instruction implies. Output ONLY the revised prompt, no preface.");
+    var p=(kindOf(item)===3?"Here is an image-generation prompt (":"Here is a MiniMax H3 video prompt (")+item.model+"):\n\n"+item.text+"\n\nRewrite it applying this instruction (the user may write in Turkish): "+cmd+
+      (item.mo===2?QKEEP:kindOf(item)===3?"\n\nKeep the same structure and length. Change only what the instruction implies. Output ONLY the revised prompt, no preface.":"\n\nKeep the exact format: the first alignment line if present, all field names, [Shot N] and 'At MM:SS.mmm' timing, (Sx) IDs, <d>[Language] ...</d> tags, reference labels. Keep the video duration of "+item.dur+" seconds. Change only what the instruction implies. Output ONLY the revised prompt, no preface.");
     try{
       var t=(await llm(p)).trim();
       item.text=t;pre.textContent=t;
@@ -436,8 +576,11 @@ function card(item,inHist){
 function renderHist(){
   var l=$("hl");l.textContent="";
   if(!hist.length){l.appendChild(mk("div","msg","Henüz kayıtlı prompt yok."));return}
-  hist.forEach(function(h){l.appendChild(card(h,true))});
+  var want=[0,3,1,2][st.hf],shown=0;
+  hist.forEach(function(h){if(want&&kindOf(h)!==want)return;shown++;l.appendChild(card(h,true))});
+  if(!shown)l.appendChild(mk("div","msg","Bu türde kayıt yok."));
 }
+chips("hf",["Hepsi","🟧 Görsel","🟦 Video","🟩 Kuyruk"],"hf",function(x){return x},renderHist);
 $("clr").onclick=function(){
   var b=$("clr");
   if(b.dataset.s==="1"){hist=[];saveH();renderHist();b.dataset.s="";b.textContent="Geçmişi temizle";return}
@@ -522,6 +665,36 @@ renderChars();
 
 function split(text){return text.split(/^\s*={3,}\s*$/m).map(function(s){return s.trim()}).filter(Boolean)}
 var go=$("go"),msg=$("msg");
+async function goImage(){
+  var idea=$("idea").value.trim();
+  if(!idea){msg.textContent="Önce bir fikir yaz.";return}
+  if(needKey()){msg.textContent=NOKEY;return}
+  var n=COUNTS[st.c],ar=IARS[st.a],fixed=$("fixed").value.trim(),sty=STYIL[st.si],mdl=IMODELS[st.m];
+  var cht=chars.filter(function(c,k){return csel[k]}).map(function(c){return c.n+": "+c.d}).join("\n");
+  var prompt=(mdl[2]?SYSK:SYS)+"\n\nTarget model: "+mdl[1]+"\nAspect ratio: "+ar+
+    (sty[1]?"\nStyle template to apply throughout (lighting, palette, mood, grade): "+sty[1]:"")+
+    (sty[2]!=="R"?"\nIMPORTANT: this is NOT photorealistic. Ignore any wording in the structure about photorealism, camera lens, film grade or real skin texture. Describe everything in the medium of the chosen style (painted, drawn or animated), and replace lens and camera details with composition and rendering details. Do not use the words photorealistic, photograph, 35mm or 8k.":"")+
+    (cht?"\nRecurring characters (copy each description identically):\n"+cht:"")+
+    "\nAlways include these fixed rules naturally: "+fixed+
+    (refImg?"\n\nREFERENCE IMAGE ATTACHED. "+REFMODES[refMode][1]+" Study the image carefully. Never identify or name any real person; describe only visible features and treat any subject as a fictional adult. If the person in the reference appears to be a minor, output exactly: REFERANS UYGUN DEĞİL":"")+
+    "\n\nUser idea (may be Turkish): "+idea+"\n\nWrite "+n+" distinct variation(s) (vary setting, outfit, lighting or palette while keeping the idea). Output ONLY the prompts, no preface. If more than one, separate them with a line containing only =====";
+  go.disabled=true;
+  var t0=Date.now(),tm=setInterval(function(){msg.textContent="Üretiliyor… "+Math.round((Date.now()-t0)/1000)+" sn"},500);
+  msg.textContent="Üretiliyor…";
+  try{
+    var raw=await llm(prompt,refImg);
+    if(raw.indexOf("REFERANS UYGUN DEĞİL")>=0)throw new Error("Bu referans görsel kullanılamaz.");
+    var items=split(raw).map(function(p,k){return{id:Date.now()+"-"+k,text:p,idea:idea+(refImg?" (+görsel)":""),model:mdl[0]+" · "+sty[0],mo:3,dur:null}});
+    items.slice().reverse().forEach(function(it){hist.unshift(it)});
+    saveH();
+    var out=$("out");out.textContent="";
+    items.forEach(function(it){out.appendChild(card(it,false))});
+    msg.textContent="Hazır ve geçmişe kaydedildi.";
+  }catch(e){
+    msg.textContent=(/^Durduruldu/.test(e.message)?"":"Hata: ")+e.message;
+  }
+  clearInterval(tm);go.disabled=false;
+}
 async function goQueue(){
   var idea=$("idea").value.trim();
   var plan=$("sp").value.split("\n").map(function(x){return x.trim()}).filter(Boolean).map(function(x){
@@ -533,7 +706,7 @@ async function goQueue(){
   var qd=QD[st.qd],ns=SHOTS[st.sh],n=COUNTS[st.c],sty=STY[st.sy],cam=CAMS[st.cm][1],dl=DLG[st.dl][1],fixed=$("fixed").value.trim(),suf=$("qs").value.trim();
   var cht=chars.filter(function(c,i){return csel[i]}).map(function(c){return c.n+": "+c.d}).join("\n");
   var fon=st.qf===1,far=QAR[st.qa];
-  var frameRules="Start-frame prompts: after the clips, also write one Krea 2 start-frame image prompt for each clip, same order and same count. Krea 2 only reads a reference image as direction and then generates a fresh image, so each frame prompt must describe the whole target frame itself: one flowing English paragraph of 3 to 6 sentences in this order: subject (reuse the exact identity and clothing wording from the clip), context and setting, composition (camera angle, framing and shot type of the clip's first moment), lighting, style, and finish with the aspect ratio in words, e.g. 'vertical "+far+" composition'. It is a frozen first frame: describe the pose, not motion, and use no camera-movement words, sound or duration. No labels, no line breaks inside a paragraph. "+
+  var frameRules="Start-frame prompts: after the clips, also write one Krea 2 start-frame image prompt for each clip, same order and same count. Krea 2 only reads a reference image as direction and then generates a fresh image, so each frame prompt must describe the whole target frame itself. Write every frame prompt by the following guide, which replaces any other ordering:\n"+SYSK+"\nAdditional frame rules: reuse the exact identity and clothing wording from the clip; the frame is the frozen first moment of the clip, so describe the pose, not motion, with no camera-movement words, sound or duration; state the aspect ratio in words, e.g. 'vertical "+far+" composition'. No labels. "+
     (st.qr===0?"Reference role: the attached reference image(s) are people or objects that supply identity. Refer to the subject as 'the person from the reference image' once, then still describe hair, face and outfit with the same wording as the reference; the setting, pose and framing come entirely from the prompt."
     :"Reference role: the first reference image is the main subject or landscape (the scene to keep) and any later images are people or objects to place in it. Refer to 'the scene from the first reference image' and keep its described elements identical; the prompt states only the new framing, pose and placement.");
   var lines=plan.map(function(c,i){
@@ -577,6 +750,7 @@ async function goQueue(){
   clearInterval(tm);go.disabled=false;
 }
 go.onclick=async function(){
+  if(st.mo===3)return goImage();
   if(st.mo===2)return goQueue();
   var idea=$("idea").value.trim(),ref=st.mo===1,k=KINDS[st.k][0];
   if(!idea){msg.textContent="Önce bir fikir yaz.";return}
