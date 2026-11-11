@@ -39,7 +39,7 @@ textarea.sm{min-height:60px}
 .edit.open{display:block}
 .edit .row{margin-bottom:8px}
 .msg{color:var(--mu);margin-top:14px;font-size:14px;word-wrap:break-word}
-.hid{display:none}
+.hid{position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none}
 #styles{max-height:168px;overflow-y:auto;padding:2px}
 </style>
 </head>
@@ -95,8 +95,10 @@ textarea.sm{min-height:60px}
 <div class="lb" id="dlgl">Diyalog</div><div class="row" id="dlg"></div>
 <div class="lb" id="musl">Müzik</div><div class="row" id="mus"></div>
 <div class="lb">Varyasyon sayısı</div><div class="row" id="counts"></div>
-<label for="fixed">Sabit kurallar (her prompt’a eklenir)</label>
-<textarea id="fixed" class="sm">Adult subjects only. Clean natural skin, no tattoos anywhere. No on-screen text unless requested.</textarea>
+<label for="styleRules">Akıllı stil sistem promptu (seçilen stile göre otomatik)</label>
+<textarea id="styleRules" class="sm" readonly></textarea>
+<label for="fixed">Kendi sabit kurallarım (isteğe bağlı, her prompt’a eklenir)</label>
+<textarea id="fixed" class="sm" placeholder="Örn. Karakterin yüzünü ve kıyafetini tüm sahnelerde aynı tut. Ekranda yazı olmasın."></textarea>
 <button class="go" id="go">Prompt üret</button>
 <button class="go" id="stop" style="display:none;margin-top:10px;background:#b3382c;color:#fff">⏹ Durdur (Esc)</button>
 <div class="msg" id="msg"></div>
@@ -162,13 +164,16 @@ var CAMS=[["Oto",""],["Sabit · gerilim","Static Shot"],["Pan · yandan açılı
 var DLG=[["Yok",""],["English","English"],["Türkçe","Turkish"]];
 var MUS=["Müzik var","Müziksiz (N/A)"];
 var RULES={
-R:"Adult subjects only. Clean natural skin, no tattoos anywhere. Realistic skin texture and natural motion. No on-screen text unless requested.",
-A:"Adult characters only. No tattoos. Clean cel-shaded skin with simple anime facial features, no photographic pores. Keep character design, line weight and palette consistent in every shot. No on-screen text unless requested.",
-D:"Adult characters only. No tattoos. Smooth stylized skin and rounded appealing shapes, no photographic realism. Keep the character model, proportions and materials consistent in every shot. No on-screen text unless requested.",
-C:"Adult characters only. No tattoos. Visible clay texture, fingerprints and handmade imperfections, slightly low stop-motion frame rate, no photographic skin. Keep the puppets and miniature sets consistent in every shot. No on-screen text unless requested.",
-W:"Adult characters only. No tattoos. Painted look with soft edges and visible paper or canvas texture, no photographic detail. Keep palette and brush style consistent in every shot. No on-screen text unless requested.",
-P:"Adult characters only. No tattoos. Flat graphic rendering with bold shapes and a limited palette, no photographic skin. Keep the character design and palette consistent in every shot. No on-screen text unless requested."};
-var dirty=false;
+ R:"Visual medium: photorealistic or live-action when appropriate. Use believable anatomy, natural lighting, and physically plausible materials. Describe skin only when relevant to the subject; for animals emphasize fur, feathers, scales, eyes and natural anatomy. Preserve the exact age, species, identity, appearance and proportions stated by the user or shown in the reference. Do not add tattoos, scars, makeup or other features unless requested. No on-screen text unless requested.",
+ A:"Visual medium: 2D anime or illustrated animation. Use coherent linework, expressive illustrated features, deliberate color design, and consistent cel or painterly shading. Use detailed painted environments where appropriate; avoid photographic pores and live-action rendering. Preserve the exact age, species, identity, appearance and proportions stated by the user or shown in the reference. No on-screen text unless requested.",
+ D:"Visual medium: stylized 3D animation. Maintain a consistent character model, anatomy, proportions, materials and surface finish; use intentional shape language, expressive forms and coherent global illumination. Avoid accidental live-action realism. Preserve the exact age, species, identity, appearance and proportions stated by the user or shown in the reference. No on-screen text unless requested.",
+ C:"Visual medium: claymation and stop-motion. Use tactile clay surfaces, subtle fingerprints, handmade imperfections, miniature-set craftsmanship and coherent stop-motion staging. Keep puppets, proportions, materials and sets consistent. Preserve the exact age, species and identity requested. No on-screen text unless requested.",
+ W:"Visual medium: watercolor illustration or animation. Use translucent pigment washes, soft color blooms, delicate bleeding edges, visible paper grain and organic brushwork. Keep the palette and watercolor texture coherent throughout. Preserve the exact age, species and identity requested. No on-screen text unless requested.",
+ O:"Visual medium: oil painting or oil-painted animation. Use layered pigments, expressive visible brushstrokes, rich color depth, canvas texture and painterly light and shadow. Keep brushwork and palette coherent. Preserve the exact age, species and identity requested. No on-screen text unless requested.",
+ P:"Visual medium: comic art and pop art. Use confident outlines, graphic shadows, controlled bold palettes, halftone or print textures and clear visual silhouettes. Keep character design and graphic language consistent. Preserve the exact age, species and identity requested. No on-screen text unless requested.",
+ X:"Visual medium: pixel art. Use a consistent pixel grid, crisp square pixels, deliberate pixel clusters, readable silhouettes and a limited coordinated palette. Avoid smooth photographic rendering. Preserve the exact age, species and identity requested. No on-screen text unless requested."
+};
+
 var STY=[["Yok","","R"],
 ["Sinematik","Live-action, cinematic, anamorphic lens, shallow depth of field, teal and orange grade, fine film grain.","R"],
 ["Dokümanter","Live-action documentary, handheld camera, available natural light, candid unposed feel.","R"],
@@ -187,9 +192,9 @@ var STY=[["Yok","","R"],
 ["3D CG","3D CG animated film look, rounded appealing shapes, soft global illumination, vibrant colors, expressive characters.","D"],
 ["Claymation","Claymation stop-motion look, handmade miniature sets, soft studio light, tactile textures.","C"],
 ["Suluboya","Watercolor animation, fluid translucent washes, soft bleeding edges, visible paper texture.","W"],
-["Yağlıboya","Oil-painting animation, visible brushstrokes, Rembrandt lighting, rich pigments, canvas texture.","W"],
+["Yağlıboya","Oil-painting animation, visible brushstrokes, Rembrandt lighting, rich pigments, canvas texture.","O"],
 ["Comic / pop art","Comic book pop-art animation: bold black outlines, halftone dots, flat vivid primary colors, dynamic composition.","P"],
-["Pixel art","Pixel art animation, limited color palette, crisp square pixels, 16-bit game look.","P"]];
+["Pixel art","Pixel art animation, limited color palette, crisp square pixels, 16-bit game look.","X"]];
 var TT=["reference generation","keyframe completion","video editing","video continuation","audio reuse","audio reference"];
 var QUICK=["Kamera hareketini zenginleştir","Daha kısa yaz","Daha detaylı yaz","Müziği kaldır (N/A yap)","Ses ortamını güçlendir"];
 var QD=["Oto",3,4,5,6,8,10],QAR=["9:16","2:3","3:4","16:9","1:1"];
@@ -227,17 +232,8 @@ chips("qtx",["Süreyi metne yaz","Yazma"],"qt",function(x){return x});
 chips("qfr",["Kapalı","Açık"],"qf",function(x){return x});
 chips("qrf",["Kişi / nesne (hepsi kimlik kaynağı)","Ana özne / mekan (ilk görsel), sonrası kişi / nesne"],"qr",function(x){return x});
 chips("qar",QAR,"qa",function(x){return x});
-chips("styles",STY,"sy",function(x){return x[0]},function(i){if(!dirty)$("fixed").value=RULES[STY[i][2]]});
-$("fixed").value=RULES.R;$("fixed").addEventListener("input",function(){dirty=true});
-(function(){
-  var r=mk("div","row");r.style.marginTop="8px";
-  [["Stil kuralını yükle",0],["Boş",1]].forEach(function(x){
-    var b=mk("button","chip q",x[0]);
-    b.onclick=function(){$("fixed").value=x[1]?"":RULES[STY[st.sy][2]];dirty=!!x[1]};
-    r.appendChild(b);
-  });
-  $("fixed").parentNode.insertBefore(r,$("fixed").nextSibling);
-})();
+chips("styles",STY,"sy",function(x){return x[0]},function(){refreshStyleRules()});
+refreshStyleRules();
 chips("cams",CAMS,"cm",function(x){return x[0]});
 chips("dlg",DLG,"dl",function(x){return x[0]});
 chips("mus",MUS,"mu",function(x){return x});
@@ -265,7 +261,7 @@ var COMMON="Shared rules (write everything in English):\n"+
 "- Visible on-screen text goes in double quotes, verbatim.\n"+
 "- overall_soundscape: 1-4 sentences, one paragraph: ambience, physical action sounds, non-verbal human sounds. No dialogue, singing or diegetic music there. N/A only for total silence.\n"+
 "- non_diegetic_music: 1-3 sentences on instrumentation, tempo, rhythm, dynamics; no abstract mood words. N/A if none.\n"+
-"- Every detail must be visible or audible. No markdown, no commentary. Subjects must be adults. Keep content tasteful.";
+"- Every detail must be visible or audible. No markdown, no commentary. Respect the age and subject type specified by the user or reference. Keep content appropriate to the requested scene.";
 var SYSB="You write prompts for the MiniMax H3 video model in the 'base' format. Output exactly three fields in this order, separated by blank lines:\nintegrated_multimodal_description: [Shot 1] ...\n\noverall_soundscape: ...\n\nnon_diegetic_music: ...\nDo NOT write any picture alignment instruction line; it is added separately.";
 var KH={
 T2VA:"Mode T2VA: build the whole audiovisual timeline from the text; add consistent scene, character, action and sound details.",
@@ -281,7 +277,7 @@ var SYSR="You write prompts for the MiniMax H3 video model in the full-reference
 
 var SYSQ="You write prompts for a video-generation queue. Every paragraph you output becomes a separate video request, and each request is generated independently with no memory of the others. Therefore every clip paragraph must be fully self-contained: repeat the complete subject description (copy it word for word in every paragraph), the setting, the lighting and the visual style. The clips share one continuous world, wardrobe and look so they can be edited together.\n"+
 "Output format: plain English, no markdown, no field names, no labels such as 'Clip 1' or 'Shot 1', no timestamps, no line breaks inside a paragraph, exactly one blank line between paragraphs. Nothing else.\n"+
-"Each paragraph is one flowing block in this order: subject identity and clothing; setting; shot type and framing; the action in time order, sized to the clip's duration (a short clip gets one simple action, a longer clip may get two or three beats); camera motion written as type + amplitude + speed, e.g. 'The camera pushes in with small amplitude at slow speed' (types: Zoom In/Out, Push In/Pull Out, Pan, Truck, Tilt, Pedestal, Arc Shot, Tracking Shot, Static Shot, Shake Slightly, POV; omit medium and normal amplitude or speed); lighting and visual style; sound (ambience and physical action sounds). Every detail must be visible or audible. Subjects must be adults. Keep content tasteful.";
+"Each paragraph is one flowing block in this order: subject identity and clothing; setting; shot type and framing; the action in time order, sized to the clip's duration (a short clip gets one simple action, a longer clip may get two or three beats); camera motion written as type + amplitude + speed, e.g. 'The camera pushes in with small amplitude at slow speed' (types: Zoom In/Out, Push In/Pull Out, Pan, Truck, Tilt, Pedestal, Arc Shot, Tracking Shot, Static Shot, Shake Slightly, POV; omit medium and normal amplitude or speed); lighting and visual style; sound (ambience and physical action sounds). Every detail must be visible or audible. Respect the age and subject type specified by the user or reference. Keep content appropriate to the requested scene.";
 var QKEEP="\n\nKeep the format: separate self-contained plain paragraphs, one blank line between paragraphs, no line breaks inside a paragraph, no field names or labels, the same number of clips, and each clip's duration unless the instruction changes it. Change only what the instruction implies. Output ONLY the revised prompt, no preface.";
 var STYI0=[["Yok",""],
 ["Barbiecore","Barbiecore and retro Palm Springs: bubblegum pink, hot magenta, glossy plastic textures, sunny playful mood."],
@@ -311,10 +307,10 @@ var STYI0=[["Yok",""],
 ["Gotik fantastik","Dark gothic fantasy: heavy mist, dim moody light, dramatic shadows, ornate architecture, muted desaturated palette with deep crimson accents."],
 ["Pastel rüya","Pastel dreamcore: hazy soft glow, bloom around highlights, pastel pink, lavender and sky blue, ethereal floating dreamlike mood."],
 ["Lüks ürün","Luxury product photography: dark glossy surface, sharp rim lighting, specular highlights, reflections, premium minimal composition."]];
-var NR=["Yağlıboya portre","Suluboya","Anime / Ghibli","Makoto Shinkai","3D Pixar","Comic / pop art"];
+var STYLE_FAMILY={"Yağlıboya portre":"O","Suluboya":"W","Anime / Ghibli":"A","Makoto Shinkai":"A","3D Pixar":"D","Comic / pop art":"P"};
 var SYS="You write rich, detailed image-generation prompts in English (photorealistic by default). Expand the user’s short idea into a complete prompt using EXACTLY this section order, written as flowing prose paragraphs (no headings, no markdown):\n"+
-"1 Format and shot (orientation, medium or look, camera angle or composition, lens)\n2 Subject (hair, eyes, freckles, expression, gaze)\n3 Skin and hard constraints\n4 Accessories and jewelry\n5 Clothing, with fabric and color details\n6 Pose and action, including any foreground object and depth of field\n7 Setting and props, with left/right/foreground/background placement\n8 Lighting (direction, warmth, shadows, highlights)\n9 Color palette as a list of named colors\n10 Style (editorial look, lens, film grade, aesthetic, ultra-detailed, 8k) and aspect ratio.\n"+
-"Quality bar: be concrete and sensory, name materials, colors and positions, keep a consistent mood, and invent tasteful details only for what the user left open. Every explicit detail the user gives (clothing, legwear, footwear, pose, framing, aspect ratio) is mandatory: include it exactly as stated and never replace, soften or omit it. Subjects must be adults. Keep content tasteful.";
+"1 Format and shot (orientation, medium or look, camera angle or composition, lens)\n2 Subject appearance (species or person, age when relevant, face or animal features, expression, gaze)\n3 Surface details and hard constraints (skin, fur, feathers, scales, materials, as appropriate)\n4 Accessories and jewelry\n5 Clothing, with fabric and color details\n6 Pose and action, including any foreground object and depth of field\n7 Setting and props, with left/right/foreground/background placement\n8 Lighting (direction, warmth, shadows, highlights)\n9 Color palette as a list of named colors\n10 Style (editorial look, lens, film grade, aesthetic, ultra-detailed, 8k) and aspect ratio.\n"+
+"Quality bar: be concrete and sensory, name materials, colors and positions, keep a consistent mood, and invent tasteful details only for what the user left open. Every explicit detail the user gives (clothing, legwear, footwear, pose, framing, aspect ratio) is mandatory: include it exactly as stated and never replace, soften or omit it. Respect the age and subject type specified by the user or reference. Keep content appropriate to the requested scene.";
 var REFMODES=[["Benzer yap","Use the reference as the main basis: keep its subject type, composition, palette and lighting, and apply the user’s idea as the changes."],
 ["Sadece stil","Take only the style, palette, lighting and mood from the reference; the subject and scene come from the user’s idea."],
 ["Sadece poz / kompozisyon","Take only the pose, framing and composition from the reference; everything else comes from the user’s idea and the chosen style."]];
@@ -333,7 +329,7 @@ var SYSK="You write prompts for the Krea 2 image model. Write one flowing Englis
 "- Distance must be explicit: 'wide shot' alone is not enough.\n"+
 "- A straight rear view hides front elements; use a slight three-quarter angle when something in front must stay visible.\n"+
 "- Every explicit detail the user gives (clothing, pose, framing, aspect ratio, objects) is mandatory and must appear exactly as stated.\n"+
-"- Subjects must be adults. Keep content tasteful.";
+"- Respect the age and subject type specified by the user or reference. Keep content appropriate to the requested scene.";
 var NEWSTY=[
 ["Neo-noir cyberpunk","neo-noir cyberpunk megacity: towering skyscrapers and giant holographic billboards, constant rain, dense fog, wet reflective streets, neon magenta and cyan glow cutting through dark haze, flying police vehicles crossing the skyline, hard chiaroscuro light, gritty cinematic sci-fi mood.","R"],
 ["Sci-fi megakent (Alita)","sci-fi megacity: vast layered city with floating districts, hover vehicles and flying cars weaving between megastructures, colossal cargo ships and spacecraft drifting in the sky, vibrant saturated colors, crisp high-detail lighting, grand scale, lived-in industrial futurism.","R"],
@@ -342,7 +338,7 @@ var NEWSTY=[
 ["Yaz editoryal (doğal ışık)","high-fashion summer editorial in harsh natural sunlight: dappled leaf shadows, warm saturated colors, glossy polished finish, bold confident pose.","R"]];
 var CSK="vp_cstyles_v1",cstyles=jget(CSK,[]);if(!Array.isArray(cstyles))cstyles=[];
 var STYV0=STY.slice(),STYIL=[];
-var STYI0b=STYI0.map(function(x){return[x[0],x[1],NR.indexOf(x[0])>=0?"A":"R"]});
+var STYI0b=STYI0.map(function(x){return[x[0],x[1],STYLE_FAMILY[x[0]]||"R"]});
 function styleLists(){
   STY=STYV0.slice();STYIL=STYI0b.slice();
   NEWSTY.concat(cstyles.map(function(c){return[c.n,c.t,c.f]})).forEach(function(x){
@@ -350,7 +346,24 @@ function styleLists(){
     STYIL.push([x[0],x[1].charAt(0).toUpperCase()+x[1].slice(1),x[2]]);
   });
 }
-function buildStyles(){var im=st.mo===3;chips("styles",im?STYIL:STY,im?"si":"sy",function(x){return x[0]})}
+function selectedStyle(){
+  var list=st.mo===3?STYIL:STY;
+  var idx=st.mo===3?st.si:st.sy;
+  return list[idx]||list[0];
+}
+function styleSystemRules(style){
+  var family=style&&style[2]||"R";
+  return RULES[family]||RULES.R;
+}
+function refreshStyleRules(){
+  var el=$("styleRules");
+  if(el)el.value=styleSystemRules(selectedStyle());
+}
+function buildStyles(){
+  var im=st.mo===3;
+  chips("styles",im?STYIL:STY,im?"si":"sy",function(x){return x[0]},function(){refreshStyleRules()});
+  refreshStyleRules();
+}
 st.si=0;st.m=0;st.a=0;st.r=0;st.hf=0;st.cf=0;
 styleLists();
 var refImg=null,refMode=0;
@@ -635,7 +648,8 @@ function pick(cb,btn){
     im.onerror=function(){msg.textContent="Görsel açılamadı.";btn.textContent=o;btn.disabled=false};
     im.src=u;
   };
-  i.click();
+  document.body.appendChild(i);
+  try{i.click()}finally{setTimeout(function(){document.body.removeChild(i)},1000)}
 }
 $("im1").onclick=function(){pick(function(t){$("f1").value=t},$("im1"))};
 $("im2").onclick=function(){pick(function(t){$("f2").value=t},$("im2"))};
@@ -669,21 +683,20 @@ async function goImage(){
   var idea=$("idea").value.trim();
   if(!idea){msg.textContent="Önce bir fikir yaz.";return}
   if(needKey()){msg.textContent=NOKEY;return}
-  var n=COUNTS[st.c],ar=IARS[st.a],fixed=$("fixed").value.trim(),sty=STYIL[st.si],mdl=IMODELS[st.m];
+  var n=COUNTS[st.c],ar=IARS[st.a],fixed=$("fixed").value.trim(),sty=STYIL[st.si],styleRules=styleSystemRules(sty),mdl=IMODELS[st.m];
   var cht=chars.filter(function(c,k){return csel[k]}).map(function(c){return c.n+": "+c.d}).join("\n");
-  var prompt=(mdl[2]?SYSK:SYS)+"\n\nTarget model: "+mdl[1]+"\nAspect ratio: "+ar+
+  var prompt=(mdl[2]?SYSK:SYS)+"\n\nTarget model: "+mdl[1]+"\nAspect ratio: "+ar+"\n\nAutomatic style system rules: "+styleRules+
     (sty[1]?"\nStyle template to apply throughout (lighting, palette, mood, grade): "+sty[1]:"")+
     (sty[2]!=="R"?"\nIMPORTANT: this is NOT photorealistic. Ignore any wording in the structure about photorealism, camera lens, film grade or real skin texture. Describe everything in the medium of the chosen style (painted, drawn or animated), and replace lens and camera details with composition and rendering details. Do not use the words photorealistic, photograph, 35mm or 8k.":"")+
     (cht?"\nRecurring characters (copy each description identically):\n"+cht:"")+
     "\nAlways include these fixed rules naturally: "+fixed+
-    (refImg?"\n\nREFERENCE IMAGE ATTACHED. "+REFMODES[refMode][1]+" Study the image carefully. Never identify or name any real person; describe only visible features and treat any subject as a fictional adult. If the person in the reference appears to be a minor, output exactly: REFERANS UYGUN DEĞİL":"")+
+    (refImg?"\n\nREFERENCE IMAGE ATTACHED. "+REFMODES[refMode][1]+" Study the image carefully. Never identify or name any real person; describe only visible features. Preserve the apparent age, species, identity and distinctive features of every subject in the reference; do not age up or age down anyone.":"")+
     "\n\nUser idea (may be Turkish): "+idea+"\n\nWrite "+n+" distinct variation(s) (vary setting, outfit, lighting or palette while keeping the idea). Output ONLY the prompts, no preface. If more than one, separate them with a line containing only =====";
   go.disabled=true;
   var t0=Date.now(),tm=setInterval(function(){msg.textContent="Üretiliyor… "+Math.round((Date.now()-t0)/1000)+" sn"},500);
   msg.textContent="Üretiliyor…";
   try{
     var raw=await llm(prompt,refImg);
-    if(raw.indexOf("REFERANS UYGUN DEĞİL")>=0)throw new Error("Bu referans görsel kullanılamaz.");
     var items=split(raw).map(function(p,k){return{id:Date.now()+"-"+k,text:p,idea:idea+(refImg?" (+görsel)":""),model:mdl[0]+" · "+sty[0],mo:3,dur:null}});
     items.slice().reverse().forEach(function(it){hist.unshift(it)});
     saveH();
@@ -703,7 +716,7 @@ async function goQueue(){
   });
   if(!idea&&!plan.length){msg.textContent="Ortak tanım veya klip planı yaz.";return}
   if(needKey()){msg.textContent=NOKEY;return}
-  var qd=QD[st.qd],ns=SHOTS[st.sh],n=COUNTS[st.c],sty=STY[st.sy],cam=CAMS[st.cm][1],dl=DLG[st.dl][1],fixed=$("fixed").value.trim(),suf=$("qs").value.trim();
+  var qd=QD[st.qd],ns=SHOTS[st.sh],n=COUNTS[st.c],sty=STY[st.sy],styleRules=styleSystemRules(sty),cam=CAMS[st.cm][1],dl=DLG[st.dl][1],fixed=$("fixed").value.trim(),suf=$("qs").value.trim();
   var cht=chars.filter(function(c,i){return csel[i]}).map(function(c){return c.n+": "+c.d}).join("\n");
   var fon=st.qf===1,far=QAR[st.qa];
   var frameRules="Start-frame prompts: after the clips, also write one Krea 2 start-frame image prompt for each clip, same order and same count. Krea 2 only reads a reference image as direction and then generates a fresh image, so each frame prompt must describe the whole target frame itself. Write every frame prompt by the following guide, which replaces any other ordering:\n"+SYSK+"\nAdditional frame rules: reuse the exact identity and clothing wording from the clip; the frame is the frozen first moment of the clip, so describe the pose, not motion, with no camera-movement words, sound or duration; state the aspect ratio in words, e.g. 'vertical "+far+" composition'. No labels. "+
@@ -713,7 +726,7 @@ async function goQueue(){
     var d=c.d!=null?c.d:(typeof qd==="number"?qd:null);
     return (i+1)+") duration: "+(d!=null?d+" seconds":"free, choose 3 to 10 seconds that fits the action")+" - "+(c.t||"you decide the action");
   }).join("\n");
-  var prompt=SYSQ+
+  var prompt=SYSQ+"\\n\\nAutomatic style system rules: "+styleRules+
     (plan.length?"\n\nClip plan (one clip per line, in order; expand each line into one detailed self-contained paragraph and keep any camera moves or lines the user gave; clips may have different durations):\n"+lines
       :"\n\nClip count: "+(typeof ns==="number"?"exactly "+ns:"choose 2 to 4")+". Split the idea into that many consecutive clips. "+(typeof qd==="number"?"Each clip lasts "+qd+" seconds.":"Choose each clip's duration yourself (between 3 and 10 seconds) to fit its action; durations may differ."))+
     (st.qt===0?"\nEnd every paragraph with its duration as a short sentence, e.g. 'Duration: 6 seconds.'":"\nDo not mention the duration in the text.")+
@@ -759,12 +772,12 @@ go.onclick=async function(){
   if(ref&&!rf){msg.textContent="En az bir referans satırı ekle.";return}
   if(!ref&&k!=="T2VA"&&!f1){msg.textContent="Kare açıklamasını yaz.";return}
   if(!ref&&k==="FL2VA"&&!f2){msg.textContent="Son kare açıklamasını da yaz.";return}
-  var n=COUNTS[st.c],dur=DURS[st.d],ns=nsh(),sty=STY[st.sy],cam=CAMS[st.cm][1],dl=DLG[st.dl][1],fixed=$("fixed").value.trim();
+  var n=COUNTS[st.c],dur=DURS[st.d],ns=nsh(),sty=STY[st.sy],styleRules=styleSystemRules(sty),cam=CAMS[st.cm][1],dl=DLG[st.dl][1],fixed=$("fixed").value.trim();
   var one=!ref&&(k==="FL2VA"||k==="L2VA");
   var plan=$("sp").value.split("\n").filter(function(x){return x.trim()}).map(function(x,i){return (i+1)+") "+x.trim()}).join("\n");
   var cht=chars.filter(function(c,i){return csel[i]}).map(function(c){return c.n+": "+c.d}).join("\n");
   var tl=TT.filter(function(t){return tsel[t]});
-  var prompt=(ref?SYSR:SYSB)+"\n\n"+COMMON+(ref?"":"\n\n"+KH[k])+
+  var prompt=(ref?SYSR:SYSB)+"\n\n"+COMMON+"\n\nAutomatic style system rules: "+styleRules+(ref?"":"\n\n"+KH[k])+
     "\n\nVideo duration: "+dur.toFixed(2)+" seconds (all cut times must be before "+dur+" s)."+
     "\nShots: "+(typeof ns==="number"?"exactly "+ns:one?"exactly 1":"choose what fits the duration")+"."+
     (sty[1]?"\nStyle to apply: "+sty[1]:"")+
