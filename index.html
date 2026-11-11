@@ -392,7 +392,7 @@ $("file").onchange=function(){
     var M=1024,w=im.naturalWidth,h=im.naturalHeight,k=Math.min(1,M/Math.max(w,h));
     var c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);
     c.getContext("2d").drawImage(im,0,0,c.width,c.height);
-    refImg=c.toDataURL("image/jpeg",0.85);$("thumb").src=refImg;$("refbox").style.display="";URL.revokeObjectURL(u);
+    var du=c.toDataURL("image/jpeg",0.85);refImg={m:"image/jpeg",d:du.split(",")[1]};$("thumb").src=du;$("refbox").style.display="";URL.revokeObjectURL(u);
   };
   im.onerror=function(){$("msg").textContent="Görsel okunamadı. JPG veya PNG dene."};
   im.src=u;inp.value="";
